@@ -1,0 +1,43 @@
+{
+  "name": "dsh-ops-monitor",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Real-time operation monitor for DeepSeek Harness: shows every tool call the agent makes on your machine, so you can watch what it is doing instead of trusting a summary.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "observability",
+    "monitor",
+    "audit"
+  ],
+  "exports": {
+    ".": "./dsh/index.js",
+    "./dsh": "./dsh/index.js",
+    "./client": "./dsh/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dsh",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/harness.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml",
+      "workspace": "D:\\DSH"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
