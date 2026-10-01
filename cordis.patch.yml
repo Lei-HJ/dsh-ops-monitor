@@ -1,8 +1,13 @@
 # dsh bundle layer: mount the operation monitor.
 #
-# Row shape: a plain entry with `name`, matching the working third-party
-# bundles in this install. An earlier attempt wrapped it as `- insert:` with an
-# inner id, which the loader accepted but mounted without the webServer service
-# in scope, so the HTTP route was skipped ("webServer unavailable" in
-# control.log). The RPC channel worked either way.
-- name: dsh-ops-monitor
+# Row shape copied from a known-working host-only plugin
+# (@goodandready/dsh-agent-loop-guard): an `insert:` list whose entry carries
+# id, name, and its own `config`. Putting the config here is what makes it reach
+# apply(); an earlier attempt invented `dsh.bundle.workspace`, which the loader
+# ignores, so the workspace was never actually configured.
+- insert:
+    - id: dsh-ops-monitor
+      name: 'dsh-ops-monitor'
+      config:
+        workspace: 'D:\DSH'
+        heartbeat: true
