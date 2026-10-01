@@ -31,8 +31,7 @@
   },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml",
-      "workspace": "D:\\DSH"
+      "patch": "./cordis.patch.yml"
     },
     "client": {
       "inject": [],
