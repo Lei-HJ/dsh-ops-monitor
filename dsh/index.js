@@ -242,15 +242,70 @@ export function apply(ctx, config = {}) {
     };
   }
 
-  // --- every tool call's final outcome ---
+  // --- listener fire counters ---
+  //
+  // A listener that never fires is indistinguishable from a plugin that failed
+  // to load, unless the listener itself reports. These counters make the
+  // difference observable from control.log alone: a timer proves apply() ran,
+  // and the per-event counts prove whether dispatch reaches this plugin.
+  const fired = { tool: 0, dispatch: 0, approval: 0 };
+  const heartbeat = config.heartbeat === true;
+  let heartbeatTimer = null;
+  if (heartbeat) {
+    heartbeatTimer = setInterval(() => {
+      control(
+        `heartbeat: dispatch=${fired.dispatch} result=${fired.tool} approval=${fired.approval} `
+        + `workspace=${workspace ?? '(unresolved)'}`,
+      );
+    }, 15000);
+    if (heartbeatTimer && typeof heartbeatTimer.unref === 'function') heartbeatTimer.unref();
+  }
+
+  // --- every tool dispatch: the reliable, scope-independent hook ---
+  //
+  // `tools/result` is scope-filtered (keyed by exec.agent), so a listener on
+  // the root scope never sees agent-scoped calls: a live run reported
+  // approval=1 while dozens of tool calls produced result=0. `tools/execute`
+  // wraps every dispatch regardless of scope, which is what a monitor needs.
+  //
+  // It is a WATERFALL: next() must run or the tool call stalls. The record is
+  // written before next() so a throw in our own code cannot skip it, and the
+  // whole body is wrapped so a logging failure cannot break tool dispatch.
+  ctx.on('tools/execute', (execution, next) => {
+    try {
+      fired.dispatch += 1;
+      const { name: toolName, callId, agent } = readExec(execution);
+      ensureBound(agent);
+      record({
+        t: Date.now(),
+        kind: 'tool',
+        phase: 'dispatch',
+        name: toolName,
+        cls: classify(toolName),
+        callId,
+        agent,
+        args: summarizeArgs(execution?.arguments),
+      });
+    } catch {
+      // contained: never let the monitor break a tool call
+    }
+    return next();
+  });
+
+  // --- tool outcome, when it reaches this scope ---
+  //
+  // Kept because it carries the error detail. On a root-scope mount it may
+  // never fire; the dispatch hook above is the one that always does.
   ctx.on('tools/result', (execution, result) => {
     try {
+      fired.tool += 1;
       const { name: toolName, callId, agent } = readExec(execution);
       ensureBound(agent);
       const isError = result?.isError === true;
       record({
         t: Date.now(),
         kind: 'tool',
+        phase: 'result',
         name: toolName,
         cls: classify(toolName),
         callId,
@@ -267,6 +322,7 @@ export function apply(ctx, config = {}) {
   // --- approval requests: the moment the agent is waiting on the user ---
   ctx.on('approval/request', (req, next) => {
     try {
+      fired.approval += 1;
       record({
         t: Date.now(),
         kind: 'approval',
