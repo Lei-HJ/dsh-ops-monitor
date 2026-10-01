@@ -1,4 +1,4 @@
-﻿// Install dsh-ops-monitor into the profile that is ACTUALLY running.
+// Install dsh-ops-monitor into the profile that is ACTUALLY running.
 //
 // Diagnosis: the dsh desktop app is started with the `desktop` profile, and
 // desktop/cordis.yml contains web-startup + webserver + web-runtime + the
@@ -75,13 +75,13 @@ try {
   failures++;
 }
 
-console.log('--- 3. cordis.patch.yml: ensure NO plugin row ---');
+console.log('--- 3. cordis.patch.yml: remove any stale plugin row ---');
 try {
-  // The bundle list is the verified path for adding a NEW entry to the tree.
-  // A `- id:` / `name:` row OVERRIDES an existing entry; using it for a new
-  // plugin silently fails to load (observed: /ops-feed returned 404), and an
-  // `- insert:` row alongside an active bundle duplicates the mount. So this
-  // step removes such a row rather than adding one.
+  // The mount comes from the bundle list. The plugin carries its own
+  // `cordis.patch.yml` (an `insert:` row with its config) inside the package,
+  // which is the shape a known-working host-only plugin uses. The PROFILE's
+  // patch file must therefore contain no row for this plugin: a `- id:` row
+  // there is an override, and adding one previously broke the mount outright.
   const before = readFileSync(PATCH, 'utf8');
   if (before.includes('dsh-ops-monitor')) {
     const lines = before.split('\n');
@@ -99,11 +99,24 @@ try {
     writeFileSync(PATCH, out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n', 'utf8');
     console.log('  removed a stale plugin row');
   } else {
-    console.log('  no plugin row present (correct for a bundle mount)');
+    console.log('  no plugin row present (correct)');
   }
-  check(!readFileSync(PATCH, 'utf8').includes('dsh-ops-monitor'), 'patch file free of plugin rows');
+  check(!readFileSync(PATCH, 'utf8').includes('dsh-ops-monitor'), 'profile patch file free of plugin rows');
 } catch (err) {
   console.log('  FAIL cordis.patch.yml: ' + err.message);
+  failures++;
+}
+
+console.log('--- 4. verify the package carries its own insert row with config ---');
+try {
+  const pkgPatch = readFileSync(join(DEST, 'cordis.patch.yml'), 'utf8');
+  check(pkgPatch.includes('- insert:'), 'package patch uses insert');
+  check(pkgPatch.includes('dsh-ops-monitor'), 'package patch names the plugin');
+  check(pkgPatch.includes('workspace:'), 'workspace config travels with the package');
+  console.log('  --- package cordis.patch.yml ---');
+  for (const line of pkgPatch.split('\n')) console.log('    ' + line);
+} catch (err) {
+  console.log('  FAIL package patch: ' + err.message);
   failures++;
 }
 
