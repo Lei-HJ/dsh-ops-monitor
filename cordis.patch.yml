@@ -1,0 +1,8 @@
+# dsh bundle layer: mount the operation monitor.
+#
+# Row shape: a plain entry with `name`, matching the working third-party
+# bundles in this install. An earlier attempt wrapped it as `- insert:` with an
+# inner id, which the loader accepted but mounted without the webServer service
+# in scope, so the HTTP route was skipped ("webServer unavailable" in
+# control.log). The RPC channel worked either way.
+- name: dsh-ops-monitor
