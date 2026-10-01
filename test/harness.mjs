@@ -1,4 +1,4 @@
-// Local harness for dsh-ops-monitor.
+﻿// Local harness for dsh-ops-monitor.
 // Runs the plugin's apply() against a mock cordis context: captures the event
 // listeners and the web route it registers, fires synthetic events, then reads
 // the feed file and calls the route handler to check the JSON it returns.
@@ -60,6 +60,8 @@ if (listeners.size === 0) fail('no event listeners registered');
 else ok('registered ' + listeners.size + ' event(s): ' + [...listeners.keys()].join(', '));
 if (!listeners.has('tools/result')) fail('tools/result listener missing');
 else ok('tools/result listener present');
+if (!listeners.has('tools/execute')) fail('tools/execute listener missing (the scope-independent hook)');
+else ok('tools/execute listener present');
 if (!listeners.has('approval/request')) fail('approval/request listener missing');
 else ok('approval/request listener present');
 if (!route) fail('web route was not registered');
@@ -69,6 +71,59 @@ else {
   else ok('route path is /ops-feed');
 }
 if (logs.length) console.log('  plugin log: ' + logs.join(' | '));
+
+console.log('--- 2b. tools/execute waterfall MUST call next() ---');
+{
+  const dispatchHandlers = listeners.get('tools/execute') || [];
+  if (!dispatchHandlers.length) {
+    fail('no tools/execute listener to test');
+  } else {
+    let nextCalls = 0;
+    const execDispatch = {
+      name: 'pwsh',
+      callId: 'call-dispatch-1',
+      agent: { id: 'session-test' },
+      arguments: { command: 'echo dispatch', description: 'dispatch probe' },
+    };
+    for (const fn of dispatchHandlers) {
+      const ret = fn(execDispatch, () => {
+        nextCalls += 1;
+        return Promise.resolve({ isError: false, value: 'ok', content: [] });
+      });
+      if (ret && typeof ret.then === 'function') await ret;
+    }
+    // a waterfall listener that skips next() stalls every tool call in the host
+    if (nextCalls !== dispatchHandlers.length) {
+      fail('tools/execute did not call next() (' + nextCalls + '/' + dispatchHandlers.length + ') - this would stall tool calls');
+    } else {
+      ok('tools/execute called next() for every listener');
+    }
+  }
+}
+
+console.log('--- 2c. tools/execute still calls next() when recording throws ---');
+{
+  const work2 = mkdtempSync(join(tmpdir(), 'ops-monitor-throw-'));
+  const listeners2 = new Map();
+  const ctx2 = {
+    on(n, fn) { if (!listeners2.has(n)) listeners2.set(n, []); listeners2.get(n).push(fn); },
+    get() { return undefined; },
+    provide() {},
+    sessions: {},
+  };
+  // a workspace path that cannot be created makes appendFileSync fail
+  mod.apply(ctx2, { workspace: join(work2, 'x', '\u0000bad') });
+  const handlers = listeners2.get('tools/execute') || [];
+  let nextCalls = 0;
+  for (const fn of handlers) {
+    const ret = fn({ name: 'pwsh', callId: 'c', agent: { id: 's' }, arguments: { command: 'x' } },
+      () => { nextCalls += 1; return Promise.resolve({ isError: false, value: 1, content: [] }); });
+    if (ret && typeof ret.then === 'function') await ret.catch(() => {});
+  }
+  if (nextCalls !== handlers.length) fail('next() skipped when recording failed');
+  else ok('next() called even when the record path is unwritable');
+  rmSync(work2, { recursive: true, force: true });
+}
 
 console.log('--- 3. fire tools/result (success) ---');
 const exec1 = {
@@ -151,8 +206,8 @@ if (route) {
     console.log('  total    = ' + parsed.total);
     console.log('  buffered = ' + parsed.buffered);
     console.log('  entries  = ' + (parsed.entries ? parsed.entries.length : 'none'));
-    if (parsed.total !== 4) fail('expected total 4 (3 tools + 1 approval), got ' + parsed.total);
-    else ok('total is 4 as expected');
+    if (parsed.total !== 5) fail('expected total 5 (1 dispatch + 3 results + 1 approval), got ' + parsed.total);
+    else ok('total is 5 as expected');
     const kinds = (parsed.entries || []).map((e) => e.kind);
     console.log('  kinds    = ' + kinds.join(', '));
   } else {
@@ -176,8 +231,8 @@ if (typeof provided.feed !== 'function') {
   console.log('  snapshot total    = ' + snap.total);
   console.log('  snapshot buffered = ' + snap.buffered);
   console.log('  snapshot entries  = ' + snap.entries.length + ' (limit 2)');
-  if (snap.total !== 4) fail('RPC total should be 4, got ' + snap.total);
-  else ok('RPC total is 4');
+  if (snap.total !== 5) fail('RPC total should be 5, got ' + snap.total);
+  else ok('RPC total is 5');
   if (snap.entries.length !== 2) fail('RPC limit not honoured: got ' + snap.entries.length);
   else ok('RPC limit honoured');
   const noArg = provided.feed(undefined);
