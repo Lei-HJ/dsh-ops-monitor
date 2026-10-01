@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# runtime artifacts this plugin writes
+.dsh-ops/
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# local probe files
+_probe.mjs
