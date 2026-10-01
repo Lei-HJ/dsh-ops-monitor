@@ -150,26 +150,41 @@ Until step 2 happens, load markers go to
 
 ## Status
 
-Verified against a live dsh desktop install (Windows, one machine):
+Verified end-to-end against a live dsh desktop install (Windows, one machine):
 
 - [x] Host half logic against a mock context (events, RPC, HTTP route)
-- [x] Workspace resolution and its cwd fallback
 - [x] Client half against a stubbed module loader (slot registration)
-- [x] Loads in a live dsh profile — `control.log` records `host half loaded`
-- [x] Captures real events — `feed.jsonl` held live `tools/result` and
-      `approval/request` payloads carrying genuine call ids and session ids
-- [x] `GET /ops-feed` answers over HTTP — a local request returned `HTTP 200`
-      with correct totals
-- [x] Single mount. Mounting the plugin both as a bundle *and* as a patch row
-      produced four instances whose in-memory buffers disagreed; the feed is now
-      read from the durable file and exactly one mount row remains
+- [x] Loads in a live dsh profile - `control.log` records `host half loaded`
+- [x] `GET /ops-feed` answers over HTTP - `HTTP 200`, correct totals
+- [x] Single mount, correct workspace - `workspace=<configured> from=config`
+- [x] **Records every tool call, in both an interactive session and a
+      concurrent second session**, with real call ids and session ids
 - [ ] Floating panel confirmed visible in the browser
 
-Two bugs the live run exposed, both fixed and now covered by tests:
+### Why `tools/execute` and not `tools/result`
+
+`tools/result` is scope-filtered (keyed by `exec.agent`). A listener mounted at
+the root scope never sees agent-scoped calls: a live run reported
+`approval=1` while dozens of tool calls produced `tool=0`. `approval/request`
+is not scope-filtered, which is why the same plugin received it.
+
+`tools/execute` wraps every dispatch regardless of scope, so it is the hook a
+monitor needs. It is a **waterfall**, so `next()` must run or the tool call
+stalls; the test suite asserts that, including when recording itself fails.
+
+`tools/result` is still subscribed because it carries error detail, and it
+fires whenever the plugin does end up agent-scoped.
+
+### Bugs the live run exposed, all fixed and covered by tests
 
 1. A pre-bind to `process.cwd()` short-circuited session-workspace resolution.
-2. A trailing newline in the feed added a phantom array element, so "the last
-   N records" returned N-1.
+2. A trailing newline in the feed added a phantom element, so "the last N
+   records" returned N-1.
+3. Mounting as a bundle row *and* a patch row produced four instances with
+   disagreeing in-memory buffers; the feed is now read from the durable file.
+4. `dsh.bundle.workspace` was an invented field the loader ignores; the
+   workspace belongs in the `insert:` row's `config`.
+5. `tools/result` alone never fires at root scope - see above.
 
 ## License
 
